@@ -10,12 +10,12 @@
   <style>
     * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
     body, html {
-      margin: 0; padding: 0; width: 100vw; height: 100dvh;
+      margin: 0; padding: 0; width: 100vw; height: 100vh;
       overflow: hidden; background: #121614; font-family: system-ui, -apple-system, sans-serif;
       color: #fff;
     }
     .view-screen {
-      position: fixed; inset: 0; width: 100vw; height: 100dvh;
+      position: fixed; inset: 0; width: 100vw; height: 100vh;
       display: none; overflow: hidden;
     }
     .view-screen.active { display: block; }
@@ -72,7 +72,7 @@
       width: 6px; height: 6px; background: #40c977; border-radius: 50%;
     }
     .scanner-status {
-      position: absolute; bottom: 160px; left: 16px; right: 16px;
+      position: absolute; bottom: 130px; left: 16px; right: 16px;
       text-align: center; z-index: 30; pointer-events: none;
     }
     #scanner-status-text {
@@ -81,19 +81,37 @@
       border: 1px solid rgba(255,255,255,0.12);
     }
     .bottom-trigger-bar {
-      position: fixed; bottom: 90px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999;
+      position: absolute; bottom: 26px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 30;
     }
     .btn-giant-capture {
       width: 88px; height: 88px; border-radius: 50%;
       background: rgba(0, 0, 0, 0.45); border: 4px solid rgba(255, 255, 255, 0.9);
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; touch-action: manipulation; transition: transform 0.08s ease;
+      cursor: pointer; touch-action: manipulation; position: relative;
+      transition: transform 0.08s ease;
     }
     .btn-giant-capture:active { transform: scale(0.91); }
     .btn-giant-core {
-      width: 66px; height: 66px; background: #fff; border-radius: 50%;
+      width: 66px; height: 66px; background: #fff; border-radius: 50%; z-index: 2;
     }
+    /* Uzpildes animācijas aplis ap pogu */
+    .progress-ring {
+      position: absolute; inset: -6px; border-radius: 50%; pointer-events: none; z-index: 3;
+      border: 4px solid transparent; transition: border-color 0.2s;
+    }
+    .progress-ring.active {
+      border-color: #f59e0b;
+      animation: spin-ring 2s linear forwards;
+    }
+    @keyframes spin-ring {
+      0% { clip-path: polygon(50% 50%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%); }
+      25% { clip-path: polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%); }
+      50% { clip-path: polygon(50% 50%, 50% 0%, 100% 0%, 100% 100%, 50% 100%, 50% 100%, 50% 100%, 50% 100%); }
+      75% { clip-path: polygon(50% 50%, 50% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 50%, 0% 50%, 0% 50%); }
+      100% { clip-path: polygon(50% 50%, 50% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%, 50% 0%, 50% 50%); }
+    }
+
     #plan-canvas {
       width: 100%; height: 100%; display: block; background: #121614; touch-action: none;
     }
@@ -192,6 +210,7 @@
 
     <div class="bottom-trigger-bar">
       <button class="btn-giant-capture" onclick="window.triggerCornerCapture()">
+        <div id="btn-progress-ring" class="progress-ring"></div>
         <div class="btn-giant-core"></div>
       </button>
     </div>
@@ -408,20 +427,12 @@
         if (currentLen < 10) return;
 
         const scale = targetLengthMm / currentLen;
-        this.logger.action(`Pielāgojam sienu #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });
+        this.logger.action(`Mērogojam telpu pēc sienas #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });
 
-        const isHorizontal = Math.abs(w.x2 - w.x1) >= Math.abs(w.z2 - w.z1);
-
-        const pts = this.walls.map(wall => {
-          let nx = wall.x1;
-          let nz = wall.z1;
-          if (isHorizontal) {
-            nx = Math.round(wall.x1 * scale);
-          } else {
-            nz = Math.round(wall.z1 * scale);
-          }
-          return { x: nx, z: nz };
-        });
+        const pts = this.walls.map(wall => ({
+          x: Math.round(wall.x1 * scale),
+          z: Math.round(wall.z1 * scale)
+        }));
         this.rebuildWallsFromPoints(pts);
       }
 
@@ -445,6 +456,7 @@
       const cameraMm = 1600;
       let orientWindow = [];
       let heartbeatTick = 0;
+      let isCapturing = false;
 
       let canvas, ctx;
       let panX = 0, panY = 0, zoom = 0.07;
@@ -494,11 +506,10 @@
         
         try {
           if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Pārlūks neatbalsta kameras piekļuvi');
+            throw new Error('Pārlūks neatbalsta kameras piekļuvi (getUserMedia nav atrasts)');
           }
 
           statusText.textContent = 'Pieprasa kameras atļauju...';
-
           const constraints = {
             video: {
               facingMode: 'environment'
@@ -510,14 +521,16 @@
           video.srcObject = stream;
           
           await video.play().catch(e => {
+            logger.warn('Video auto-play atteicās, mēģinām atkārtoti: ' + e.message);
             return video.play();
           });
 
-          statusText.textContent = 'Notēmē uz griestu stūri un spied pogu';
+          statusText.textContent = 'Notēmē uz stūri, pasper soli un spied pogu';
           logger.info('Kameras plūsma sekmīgi palaista');
         } catch (err) {
           logger.error('Kameras kļūda: ' + err.message);
           statusText.textContent = 'Kļūda: Nav kameras atļaujas vai tā aizņemta!';
+          alert('Kameras kļūda: ' + err.message + '\nPārliecinies, ka pārlūkam ir dota atļauja izmantot kameru!');
         }
       }
 
@@ -539,19 +552,33 @@
       }
 
       function triggerCorner() {
-        const flash = document.getElementById('capture-flash');
-        flash.style.opacity = '0.75';
-        setTimeout(() => (flash.style.opacity = '0'), 80);
-        if (navigator.vibrate) navigator.vibrate(45);
+        if (isCapturing) return; // Neļauj spammot kamēr notiek 2sec aizture
+        isCapturing = true;
 
-        const avg = get3SecAveragedAngles();
-        const pt = geo.projectCeilingCorner(ceilingMm, cameraMm, avg.pitch, avg.yaw);
+        const statusText = document.getElementById('scanner-status-text');
+        const ring = document.getElementById('btn-progress-ring');
 
-        if (pt) {
-          document.getElementById('corner-badge-count').textContent = `${geo.rawCorners.length} stūri`;
-          document.getElementById('scanner-status-text').textContent =
-            `Fiksēts stūris #${geo.rawCorners.length} (${pt.x}, ${pt.z} mm). Pagriezies uz nākamo!`;
-        }
+        statusText.textContent = 'Pasper soli, pagriezies un noturiet kadrā...';
+        ring.classList.add('active');
+
+        // 2 sekunžu aiztures taimeris, lai lietotājs paspētu pakustēties un stabilizēties
+        setTimeout(() => {
+          ring.classList.remove('active');
+          isCapturing = false;
+
+          const flash = document.getElementById('capture-flash');
+          flash.style.opacity = '0.75';
+          setTimeout(() => (flash.style.opacity = '0'), 80);
+          if (navigator.vibrate) navigator.vibrate(45);
+
+          const avg = get3SecAveragedAngles();
+          const pt = geo.projectCeilingCorner(ceilingMm, cameraMm, avg.pitch, avg.yaw);
+
+          if (pt) {
+            document.getElementById('corner-badge-count').textContent = `${geo.rawCorners.length} stūri`;
+            statusText.textContent = `Fiksēts stūris #${geo.rawCorners.length}. Sper soli uz nākamo!`;
+          }
+        }, 2000);
       }
 
       function startMainLoop() {
