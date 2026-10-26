@@ -10,12 +10,12 @@
   <style>
     * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
     body, html {
-      margin: 0; padding: 0; width: 100vw; height: 100vh;
+      margin: 0; padding: 0; width: 100vw; height: 100dvh;
       overflow: hidden; background: #121614; font-family: system-ui, -apple-system, sans-serif;
       color: #fff;
     }
     .view-screen {
-      position: fixed; inset: 0; width: 100vw; height: 100vh;
+      position: fixed; inset: 0; width: 100vw; height: 100dvh;
       display: none; overflow: hidden;
     }
     .view-screen.active { display: block; }
@@ -72,7 +72,7 @@
       width: 6px; height: 6px; background: #40c977; border-radius: 50%;
     }
     .scanner-status {
-      position: absolute; bottom: 130px; left: 16px; right: 16px;
+      position: absolute; bottom: 160px; left: 16px; right: 16px;
       text-align: center; z-index: 30; pointer-events: none;
     }
     #scanner-status-text {
@@ -80,9 +80,9 @@
       color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 14px;
       border: 1px solid rgba(255,255,255,0.12);
     }
-    .bottom-trigger-bar {   position: fixed; bottom: 90px; left: 0; right: 0;   display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999; } {   position: fixed; bottom: 90px; left: 0; right: 0;   display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999; } {
-      position: absolute; bottom: 26px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 30;
+    .bottom-trigger-bar {
+      position: fixed; bottom: 90px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999;
     }
     .btn-giant-capture {
       width: 88px; height: 88px; border-radius: 50%;
@@ -401,19 +401,27 @@
         return Math.round(Math.hypot(w.x2 - w.x1, w.z2 - w.z1));
       }
 
-      scaleByWallMeasurement(wallIdx, targetLengthMm) {         const w = this.walls[wallIdx];         if (!w || targetLengthMm <= 100) return;         const currentLen = this.getWallLength(w);         if (currentLen < 10) return;          const scale = targetLengthMm / currentLen;         this.logger.action(`Pielāgojam sienu #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });          // Nosakām, vai siena ir horizontāla (maina X asi) vai vertikāla (maina Z asi)         const isHorizontal = Math.abs(w.x2 - w.x1) >= Math.abs(w.z2 - w.z1);          const pts = this.walls.map(wall => {           let nx = wall.x1;           let nz = wall.z1;           if (isHorizontal) {             nx = Math.round(wall.x1 * scale); // Mainām tikai platumu neatkarīgi           } else {             nz = Math.round(wall.z1 * scale); // Mainām tikai augstumu/dziļumu neatkarīgi           }           return { x: nx, z: nz };         });         this.rebuildWallsFromPoints(pts);       }
+      scaleByWallMeasurement(wallIdx, targetLengthMm) {
         const w = this.walls[wallIdx];
         if (!w || targetLengthMm <= 100) return;
         const currentLen = this.getWallLength(w);
         if (currentLen < 10) return;
 
         const scale = targetLengthMm / currentLen;
-        this.logger.action(`Mērogojam telpu pēc sienas #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });
+        this.logger.action(`Pielāgojam sienu #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });
 
-        const pts = this.walls.map(wall => ({
-          x: Math.round(wall.x1 * scale),
-          z: Math.round(wall.z1 * scale)
-        }));
+        const isHorizontal = Math.abs(w.x2 - w.x1) >= Math.abs(w.z2 - w.z1);
+
+        const pts = this.walls.map(wall => {
+          let nx = wall.x1;
+          let nz = wall.z1;
+          if (isHorizontal) {
+            nx = Math.round(wall.x1 * scale);
+          } else {
+            nz = Math.round(wall.z1 * scale);
+          }
+          return { x: nx, z: nz };
+        });
         this.rebuildWallsFromPoints(pts);
       }
 
@@ -485,13 +493,13 @@
         const statusText = document.getElementById('scanner-status-text');
         
         try {
-          // Pārbaudām, vai pārlūks atbalsta multivides straumēšanu
           if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Pārlūks neatbalsta kameras piekļuvi (getUserMedia nav atrasts)');
+            throw new Error('Pārlūks neatbalsta kameras piekļuvi');
           }
 
           statusText.textContent = 'Pieprasa kameras atļauju...';
-const constraints = {
+
+          const constraints = {
             video: {
               facingMode: 'environment'
             },
@@ -502,7 +510,6 @@ const constraints = {
           video.srcObject = stream;
           
           await video.play().catch(e => {
-            logger.warn('Video auto-play atteicās, mēģinām atkārtoti: ' + e.message);
             return video.play();
           });
 
@@ -511,7 +518,6 @@ const constraints = {
         } catch (err) {
           logger.error('Kameras kļūda: ' + err.message);
           statusText.textContent = 'Kļūda: Nav kameras atļaujas vai tā aizņemta!';
-          alert('Kameras kļūda: ' + err.message + '\nPārliecinies, ka Chrome pārlūkam ir dota atļauja izmantot kameru!');
         }
       }
 
@@ -753,7 +759,8 @@ const constraints = {
         }
         dxf += "0\nENDSEC\n0\nEOF\n";
 
-const blob = new Blob([dxf], { type: 'application/dxf' });        const a = document.createElement('a');
+        const blob = new Blob([dxf], { type: 'application/dxf' });
+        const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `telpa_${Date.now()}.dxf`;
         a.click();
