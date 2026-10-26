@@ -10,12 +10,12 @@
   <style>
     * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
     body, html {
-      margin: 0; padding: 0; width: 100vw; height: 100vh;
+      margin: 0; padding: 0; width: 100vw; height: 100dvh;
       overflow: hidden; background: #121614; font-family: system-ui, -apple-system, sans-serif;
       color: #fff;
     }
     .view-screen {
-      position: fixed; inset: 0; width: 100vw; height: 100vh;
+      position: fixed; inset: 0; width: 100vw; height: 100dvh;
       display: none; overflow: hidden;
     }
     .view-screen.active { display: block; }
@@ -72,7 +72,7 @@
       width: 6px; height: 6px; background: #40c977; border-radius: 50%;
     }
     .scanner-status {
-      position: absolute; bottom: 130px; left: 16px; right: 16px;
+      position: absolute; bottom: calc(25vh + 65px); left: 16px; right: 16px;
       text-align: center; z-index: 30; pointer-events: none;
     }
     #scanner-status-text {
@@ -80,9 +80,9 @@
       color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 14px;
       border: 1px solid rgba(255,255,255,0.12);
     }
-    .bottom-trigger-bar {       position: fixed; bottom: 90px; left: 0; right: 0;       display: flex; justify-content: center; align-items: center; z-index: 999;     } {
-      position: absolute; bottom: 26px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 30;
+    .bottom-trigger-bar {
+      position: fixed; bottom: 25vh; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; z-index: 999;
     }
     .btn-giant-capture {
       width: 88px; height: 88px; border-radius: 50%;
@@ -95,7 +95,6 @@
     .btn-giant-core {
       width: 66px; height: 66px; background: #fff; border-radius: 50%; z-index: 2;
     }
-    /* Uzpildes animācijas aplis ap pogu */
     .progress-ring {
       position: absolute; inset: -6px; border-radius: 50%; pointer-events: none; z-index: 3;
       border: 4px solid transparent; transition: border-color 0.2s;
@@ -120,8 +119,9 @@
     }
     .room-area-text { font-size: 20px; font-weight: 700; color: #40c977; }
     .room-hint-text { font-size: 12px; color: #99a59e; margin-top: 2px; }
+    
     .floating-pill-bar {
-      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: calc(24px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
       display: flex; gap: 8px; padding: 6px 10px;
       background: rgba(24, 32, 28, 0.85); backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px; z-index: 40;
@@ -132,8 +132,9 @@
       font-size: 13px; font-weight: 500; padding: 8px 12px; border-radius: 20px; cursor: pointer;
     }
     .pill-btn.primary { background: #40c977; color: #06150c; font-weight: 700; }
+    
     .wall-editor-sheet {
-      position: absolute; bottom: 85px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: calc(85px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
       background: rgba(20, 26, 23, 0.95); backdrop-filter: blur(12px);
       border: 1px solid rgba(64, 201, 119, 0.4); border-radius: 20px;
       padding: 14px 18px; width: 90%; max-width: 360px; z-index: 45;
@@ -232,7 +233,7 @@
 
     <div class="blueprint-info">
       <div id="room-area-display" class="room-area-text">0.00 m²</div>
-      <div class="room-hint-text">Uzspied uz sienas, lai ievadītu mm vai pievienotu durvis/logu</div>
+      <div class="room-hint-text" id="blueprint-hint">Uzspied uz sienas, lai ievadītu mm vai pievienotu durvis/logu</div>
     </div>
 
     <div id="wall-editor" class="wall-editor-sheet">
@@ -242,8 +243,8 @@
         <button class="btn-apply" onclick="App.applyWallLength()">Fiksēt mm</button>
       </div>
       <div class="editor-row">
-        <button class="btn-small-pill" style="flex:1" onclick="App.addOpeningToSelected('DOOR')">+ Durvis (900mm)</button>
-        <button class="btn-small-pill" style="flex:1" onclick="App.addOpeningToSelected('WINDOW')">+ Logs (1200mm)</button>
+        <button class="btn-small-pill" style="flex:1" onclick="App.startAddingOpening('DOOR')">+ Durvis (2 punkti)</button>
+        <button class="btn-small-pill" style="flex:1" onclick="App.startAddingOpening('WINDOW')">+ Logs (2 punkti)</button>
         <button class="btn-small-pill" onclick="App.closeWallEditor()">✕</button>
       </div>
     </div>
@@ -463,6 +464,10 @@
       let selectedWallIdx = -1;
       let isDragging = false, dragStartX = 0, dragStartY = 0;
 
+      // Mainīgie divu punktu ailes (durvju/loga) iezīmēšanai
+      let addingOpeningType = null; // 'DOOR' vai 'WINDOW'
+      let openingPoint1 = null;     // Pirmais noklikšķinātais punkts (attālumā no sienas sākuma mm)
+
       function init() {
         logger.info('Meistara Skaneris 2.1 startēts');
         canvas = document.getElementById('plan-canvas');
@@ -510,18 +515,12 @@
           }
 
           statusText.textContent = 'Pieprasa kameras atļauju...';
-          const constraints = {
-            video: {
-              facingMode: 'environment'
-            },
-            audio: false
-          };
+          const constraints = { video: { facingMode: 'environment' }, audio: false };
 
           const stream = await navigator.mediaDevices.getUserMedia(constraints);
           video.srcObject = stream;
           
           await video.play().catch(e => {
-            logger.warn('Video auto-play atteicās, mēģinām atkārtoti: ' + e.message);
             return video.play();
           });
 
@@ -529,8 +528,7 @@
           logger.info('Kameras plūsma sekmīgi palaista');
         } catch (err) {
           logger.error('Kameras kļūda: ' + err.message);
-          statusText.textContent = 'Kļūda: Nav kameras atļaujas vai tā aizņemta!';
-          alert('Kameras kļūda: ' + err.message + '\nPārliecinies, ka pārlūkam ir dota atļauja izmantot kameru!');
+          statusText.textContent = 'Kļūda: Nav kameras atļaujas!';
         }
       }
 
@@ -545,14 +543,11 @@
           sx += Math.cos(s.yaw);
           sy += Math.sin(s.yaw);
         }
-        return {
-          pitch: sp / orientWindow.length,
-          yaw: Math.atan2(sy, sx)
-        };
+        return { pitch: sp / orientWindow.length, yaw: Math.atan2(sy, sx) };
       }
 
       function triggerCorner() {
-        if (isCapturing) return; // Neļauj spammot kamēr notiek 2sec aizture
+        if (isCapturing) return;
         isCapturing = true;
 
         const statusText = document.getElementById('scanner-status-text');
@@ -561,7 +556,6 @@
         statusText.textContent = 'Pasper soli, pagriezies un noturiet kadrā...';
         ring.classList.add('active');
 
-        // 2 sekunžu aiztures taimeris, lai lietotājs paspētu pakustēties un stabilizēties
         setTimeout(() => {
           ring.classList.remove('active');
           isCapturing = false;
@@ -674,14 +668,24 @@
           ctx.lineWidth = isSelected ? 6 : 4;
           ctx.stroke();
 
+          // Zīmē ailes (durvis / logus) uz sienas
           if (w.openings) {
             w.openings.forEach(op => {
-              const mx = (p1.x + p2.x) / 2;
-              const my = (p1.y + p2.y) / 2;
-              ctx.fillStyle = op.type === 'DOOR' ? '#f59e0b' : '#38bdf8';
-              ctx.beginPath();
-              ctx.arc(mx, my, 7, 0, Math.PI * 2);
-              ctx.fill();
+              // op.offset un op.width ir milimetros no w.x1,z1
+              const wallLen = geo.getWallLength(w);
+              if (wallLen > 0) {
+                const t1 = op.offset / wallLen;
+                const t2 = (op.offset + op.width) / wallLen;
+                const opP1 = { x: p1.x + (p2.x - p1.x) * t1, y: p1.y + (p2.y - p1.y) * t1 };
+                const opP2 = { x: p1.x + (p2.x - p1.x) * t2, y: p1.y + (p2.y - p1.y) * t2 };
+
+                ctx.beginPath();
+                ctx.moveTo(opP1.x, opP1.y);
+                ctx.lineTo(opP2.x, opP2.y);
+                ctx.strokeStyle = op.type === 'DOOR' ? '#f59e0b' : '#38bdf8';
+                ctx.lineWidth = 8;
+                ctx.stroke();
+              }
             });
           }
 
@@ -708,6 +712,33 @@
           const sx = e.clientX - rect.left;
           const sy = e.clientY - rect.top;
 
+          // Ja esam režīmā, kur lietotājs atzīmē ailes punktus uz izvēlētās sienas
+          if (addingOpeningType && selectedWallIdx >= 0) {
+            const w = geo.walls[selectedWallIdx];
+            const p1 = { x: w.x1, z: w.z1 };
+            const p2 = { x: w.x2, z: w.z2 };
+            const projMm = getProjectionMmOnWall(sx, sy, p1, p2);
+
+            if (projMm !== null) {
+              if (openingPoint1 === null) {
+                openingPoint1 = projMm;
+                document.getElementById('blueprint-hint').textContent = `Atzīmē otru ailes stūri uz sienas #${selectedWallIdx + 1}...`;
+              } else {
+                const offset = Math.min(openingPoint1, projMm);
+                const width = Math.abs(projMm - openingPoint1);
+                if (width > 100) {
+                  w.openings.push({ type: addingOpeningType, offset, width });
+                  logger.action(`Pievienota aile (${addingOpeningType}) platumā ${Math.round(width)}mm`);
+                }
+                addingOpeningType = null;
+                openingPoint1 = null;
+                document.getElementById('blueprint-hint').textContent = 'Uzspied uz sienas, lai ievadītu mm vai pievienotu durvis/logu';
+              }
+              draw2D();
+              return;
+            }
+          }
+
           let hitIdx = -1;
           let minDist = 28;
           geo.walls.forEach((w, idx) => {
@@ -719,6 +750,8 @@
 
           if (hitIdx !== -1) {
             selectedWallIdx = hitIdx;
+            addingOpeningType = null;
+            openingPoint1 = null;
             const w = geo.walls[hitIdx];
             document.getElementById('editor-wall-title').textContent = `Siena #${hitIdx + 1} (aktuālais: ${geo.getWallLength(w)} mm)`;
             document.getElementById('input-wall-mm').value = geo.getWallLength(w);
@@ -742,6 +775,21 @@
         window.addEventListener('pointerup', () => { isDragging = false; });
       }
 
+      // Aprēķina klikšķa projekciju milimetros uz konkrētās sienas
+      function getProjectionMmOnWall(screenX, screenY, wStart, wEnd) {
+        const p1 = worldToScreen(wStart.x, wStart.z);
+        const p2 = worldToScreen(wEnd.x, wEnd.z);
+        const wallLenPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        if (wallLenPx < 5) return null;
+
+        const l2 = (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2;
+        let t = ((screenX - p1.x) * (p2.x - p1.x) + (screenY - p1.y) * (p2.y - p1.y)) / l2;
+        t = Math.max(0, Math.min(1, t));
+
+        const realWallLenMm = geo.getWallLength({ x1: wStart.x, z1: wStart.z, x2: wEnd.x, z2: wEnd.z });
+        return Math.round(t * realWallLenMm);
+      }
+
       function distToSegment(p, v, w) {
         const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
         if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
@@ -760,17 +808,20 @@
         }
       }
 
-      function addOpeningToSelected(type) {
+      function startAddingOpening(type) {
         if (selectedWallIdx < 0) return;
-        const w = geo.walls[selectedWallIdx];
-        w.openings.push({ type, width: type === 'DOOR' ? 900 : 1200 });
-        logger.action(`Pievienota aile (${type}) sienai #${selectedWallIdx + 1}`);
-        draw2D();
+        addingOpeningType = type;
+        openingPoint1 = null;
+        document.getElementById('wall-editor').classList.remove('open');
+        document.getElementById('blueprint-hint').textContent = `Uzspied uz sienas #${selectedWallIdx + 1} uz PIRMO durvis/loga stūri...`;
       }
 
       function closeWallEditor() {
         selectedWallIdx = -1;
+        addingOpeningType = null;
+        openingPoint1 = null;
         document.getElementById('wall-editor').classList.remove('open');
+        document.getElementById('blueprint-hint').textContent = 'Uzspied uz sienas, lai ievadītu mm vai pievienotu durvis/logu';
         draw2D();
       }
 
@@ -786,7 +837,7 @@
         }
         dxf += "0\nENDSEC\n0\nEOF\n";
 
-        const blob = new Blob([dxf], { type: 'application/dxf' });
+        const blob = new Blob([dxf], { type: 'application/dxf'}}, { type: 'application/dxf' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `telpa_${Date.now()}.dxf`;
@@ -829,7 +880,7 @@
         switchToCamera,
         resetView2D,
         applyWallLength,
-        addOpeningToSelected,
+        startAddingOpening,
         closeWallEditor,
         exportDXF,
         openLogModal,
