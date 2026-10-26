@@ -80,7 +80,7 @@
       color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 14px;
       border: 1px solid rgba(255,255,255,0.12);
     }
-    .bottom-trigger-bar {   position: fixed; bottom: 150px; left: 0; right: 0;   display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999; } {
+    .bottom-trigger-bar {   position: fixed; bottom: 150px; left: 0; right: 0;   display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999; } {   position: fixed; bottom: 150px; left: 0; right: 0;   display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 999; } {
       position: absolute; bottom: 26px; left: 0; right: 0;
       display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 30;
     }
@@ -401,7 +401,7 @@
         return Math.round(Math.hypot(w.x2 - w.x1, w.z2 - w.z1));
       }
 
-      scaleByWallMeasurement(wallIdx, targetLengthMm) {
+      scaleByWallMeasurement(wallIdx, targetLengthMm) {         const w = this.walls[wallIdx];         if (!w || targetLengthMm <= 100) return;         const currentLen = this.getWallLength(w);         if (currentLen < 10) return;          const scale = targetLengthMm / currentLen;         this.logger.action(`Pielāgojam sienu #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });          // Nosakām, vai siena ir horizontāla (maina X asi) vai vertikāla (maina Z asi)         const isHorizontal = Math.abs(w.x2 - w.x1) >= Math.abs(w.z2 - w.z1);          const pts = this.walls.map(wall => {           let nx = wall.x1;           let nz = wall.z1;           if (isHorizontal) {             nx = Math.round(wall.x1 * scale); // Mainām tikai platumu neatkarīgi           } else {             nz = Math.round(wall.z1 * scale); // Mainām tikai augstumu/dziļumu neatkarīgi           }           return { x: nx, z: nz };         });         this.rebuildWallsFromPoints(pts);       }
         const w = this.walls[wallIdx];
         if (!w || targetLengthMm <= 100) return;
         const currentLen = this.getWallLength(w);
