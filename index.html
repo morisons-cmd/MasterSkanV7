@@ -491,12 +491,9 @@
           }
 
           statusText.textContent = 'Pieprasa kameras atļauju...';
-
-          const constraints = {
+const constraints = {
             video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
+              facingMode: 'environment'
             },
             audio: false
           };
@@ -756,8 +753,7 @@
         }
         dxf += "0\nENDSEC\n0\nEOF\n";
 
-        const blob = new Blob([dxf], { type: 'application/dxf' });
-        const a = document.createElement('a');
+const blob = new Blob([dxf], { type: 'application/dxf' });        const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `telpa_${Date.now()}.dxf`;
         a.click();
