@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#121614">
+  <title>Meistara Skaneris 2.1</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+    body, html {
+      margin: 0; padding: 0; width: 100vw; height: 100vh;
+      overflow: hidden; background: #121614; font-family: system-ui, -apple-system, sans-serif;
+      color: #fff;
+    }
+    .view-screen {
+      position: fixed; inset: 0; width: 100vw; height: 100vh;
+      display: none; overflow: hidden;
+    }
+    .view-screen.active { display: block; }
+    #camera-stream {
+      width: 100%; height: 100%; object-fit: cover; background: #000;
+      position: absolute; top: 0; left: 0; z-index: 1;
+    }
+    .flash-overlay {
+      position: absolute; inset: 0; background: #fff; opacity: 0;
+      pointer-events: none; transition: opacity 0.08s ease-out; z-index: 20;
+    }
+    .top-bar {
+      position: absolute; top: 16px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: center; z-index: 30;
+    }
+    .status-pill {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px);
+      padding: 8px 14px; border-radius: 24px; font-size: 14px; font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .heartbeat-dot {
+      width: 10px; height: 10px; border-radius: 50%; background: #40c977;
+      opacity: 0.35; transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    .heartbeat-dot.pulse-on { transform: scale(1.35); opacity: 1; }
+    .top-actions { display: flex; gap: 8px; }
+    .btn-small-pill {
+      background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25); color: #fff;
+      padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-small-pill.accent { background: #40c977; color: #06150c; border: none; font-weight: 700; }
+    .height-badge {
+      position: absolute; top: 64px; left: 16px; z-index: 30;
+      background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 16px;
+      font-size: 12px; color: #ccc; border: 1px solid rgba(255,255,255,0.15);
+    }
+    .height-badge input {
+      width: 60px; background: transparent; border: none; border-bottom: 1px solid #40c977;
+      color: #fff; font-weight: bold; text-align: center; font-size: 13px;
+    }
+    .crosshair-wrapper {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      pointer-events: none; z-index: 25;
+    }
+    .crosshair-ring {
+      width: 54px; height: 54px; border: 2px solid rgba(255, 255, 255, 0.85);
+      border-radius: 50%; box-shadow: 0 0 8px rgba(0,0,0,0.6);
+    }
+    .crosshair-dot {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 6px; height: 6px; background: #40c977; border-radius: 50%;
+    }
+    .scanner-status {
+      position: absolute; bottom: 130px; left: 16px; right: 16px;
+      text-align: center; z-index: 30; pointer-events: none;
+    }
+    #scanner-status-text {
+      display: inline-block; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(6px);
+      color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .bottom-trigger-bar {
+      position: absolute; bottom: 26px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 24px; z-index: 30;
+    }
+    .btn-giant-capture {
+      width: 88px; height: 88px; border-radius: 50%;
+      background: rgba(0, 0, 0, 0.45); border: 4px solid rgba(255, 255, 255, 0.9);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; touch-action: manipulation; transition: transform 0.08s ease;
+    }
+    .btn-giant-capture:active { transform: scale(0.91); }
+    .btn-giant-core {
+      width: 66px; height: 66px; background: #fff; border-radius: 50%;
+    }
+    #plan-canvas {
+      width: 100%; height: 100%; display: block; background: #121614; touch-action: none;
+    }
+    .blueprint-info {
+      position: absolute; top: 64px; left: 20px; pointer-events: none; z-index: 25;
+    }
+    .room-area-text { font-size: 20px; font-weight: 700; color: #40c977; }
+    .room-hint-text { font-size: 12px; color: #99a59e; margin-top: 2px; }
+    .floating-pill-bar {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; padding: 6px 10px;
+      background: rgba(24, 32, 28, 0.85); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 30px; z-index: 40;
+      white-space: nowrap;
+    }
+    .pill-btn {
+      background: transparent; border: none; color: #e0e6e2;
+      font-size: 13px; font-weight: 500; padding: 8px 12px; border-radius: 20px; cursor: pointer;
+    }
+    .pill-btn.primary { background: #40c977; color: #06150c; font-weight: 700; }
+    .wall-editor-sheet {
+      position: absolute; bottom: 85px; left: 50%; transform: translateX(-50%);
+      background: rgba(20, 26, 23, 0.95); backdrop-filter: blur(12px);
+      border: 1px solid rgba(64, 201, 119, 0.4); border-radius: 20px;
+      padding: 14px 18px; width: 90%; max-width: 360px; z-index: 45;
+      display: none; flex-direction: column; gap: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    .wall-editor-sheet.open { display: flex; }
+    .editor-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .editor-row input {
+      flex: 1; background: #0d110f; border: 1px solid #35473d; color: #fff;
+      padding: 8px 12px; border-radius: 10px; font-size: 16px; font-weight: 600; text-align: center;
+    }
+    .btn-apply {
+      background: #40c977; color: #06150c; border: none; padding: 9px 16px;
+      border-radius: 10px; font-weight: 700; cursor: pointer;
+    }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(6px); z-index: 100; display: none;
+      flex-direction: column; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.15);
+    }
+    .thumb-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.15); min-height: 95px;
+    }
+    .thumb-item {
+      flex: 0 0 auto; width: 96px; text-align: center; font-size: 10px; color: #aaa;
+    }
+    .thumb-item img {
+      width: 96px; height: 64px; object-fit: cover; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.25); display: block; margin-bottom: 2px;
+    }
+    .log-output {
+      flex: 1; background: #0a0d0b; border: 1px solid #26332b; border-radius: 10px;
+      margin-top: 10px; padding: 10px; font-family: monospace; font-size: 11px;
+      color: #6ee7a0; overflow-y: auto; white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="view-camera" class="view-screen active">
+    <video id="camera-stream" autoplay playsinline muted></video>
+    <div id="capture-flash" class="flash-overlay"></div>
+
+    <div class="top-bar">
+      <div class="status-pill">
+        <span id="heartbeat-cam" class="heartbeat-dot"></span>
+        <span id="corner-badge-count">0 stūri</span>
+      </div>
+      <div class="top-actions">
+        <button class="btn-small-pill" onclick="App.openLogModal()">Žurnāls</button>
+        <button class="btn-small-pill accent" onclick="App.finishCaptureAndOpen2D()">Slēgt telpu ➔</button>
+      </div>
+    </div>
+
+    <div class="height-badge">
+      Griesti: <input type="number" id="input-ceiling-mm" value="2500" onchange="App.updateCeilingHeight(this.value)"> mm
+    </div>
+
+    <div class="crosshair-wrapper">
+      <div class="crosshair-ring"></div>
+      <div class="crosshair-dot"></div>
+    </div>
+
+    <div class="scanner-status">
+      <span id="scanner-status-text">Ielādē kameru...</span>
+    </div>
+
+    <div class="bottom-trigger-bar">
+      <button class="btn-giant-capture" onclick="window.triggerCornerCapture()">
+        <div class="btn-giant-core"></div>
+      </button>
+    </div>
+  </div>
+
+  <div id="view-blueprint" class="view-screen">
+    <canvas id="plan-canvas"></canvas>
+
+    <div class="top-bar">
+      <div class="status-pill">
+        <span id="heartbeat-2d" class="heartbeat-dot pulse-on"></span>
+        <span>2D Plāns</span>
+      </div>
+      <div class="top-actions">
+        <button class="btn-small-pill" onclick="App.switchToCamera()">⬅ Kamera</button>
+        <button class="btn-small-pill" onclick="App.openLogModal()">Žurnāls</button>
+      </div>
+    </div>
+
+    <div class="blueprint-info">
+      <div id="room-area-display" class="room-area-text">0.00 m²</div>
+      <div class="room-hint-text">Uzspied uz sienas, lai ievadītu mm vai pievienotu durvis/logu</div>
+    </div>
+
+    <div id="wall-editor" class="wall-editor-sheet">
+      <div style="font-size:13px; font-weight:600; color:#40c977;" id="editor-wall-title">Siena #1</div>
+      <div class="editor-row">
+        <input type="number" id="input-wall-mm" placeholder="Garums mm">
+        <button class="btn-apply" onclick="App.applyWallLength()">Fiksēt mm</button>
+      </div>
+      <div class="editor-row">
+        <button class="btn-small-pill" style="flex:1" onclick="App.addOpeningToSelected('DOOR')">+ Durvis (900mm)</button>
+        <button class="btn-small-pill" style="flex:1" onclick="App.addOpeningToSelected('WINDOW')">+ Logs (1200mm)</button>
+        <button class="btn-small-pill" onclick="App.closeWallEditor()">✕</button>
+      </div>
+    </div>
+
+    <div class="floating-pill-bar">
+      <button class="pill-btn" onclick="App.resetView2D()">Centrēt</button>
+      <button class="pill-btn primary" onclick="App.exportDXF()">Eksportēt DXF</button>
+    </div>
+  </div>
+
+  <div id="modal-log" class="modal-backdrop">
+    <div class="modal-header">
+      <strong style="font-size:15px;">Sistēmas Darbību Žurnāls & 1 FPS Kadri</strong>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-small-pill" onclick="App.copyLogs()">Kopēt</button>
+        <button class="btn-small-pill accent" onclick="App.closeLogModal()">Aizvērt</button>
+      </div>
+    </div>
+    <div id="thumb-strip" class="thumb-strip"></div>
+    <div id="log-output" class="log-output"></div>
+  </div>
+
+  <script>
+    class MasterLogger {
+      constructor(max = 250) { this.max = max; this.logs = []; }
+      log(cat, msg, data = null) {
+        const t = new Date().toISOString().slice(11, 23);
+        const line = `[${t}] [${cat}] ${msg}${data ? ' | ' + JSON.stringify(data) : ''}`;
+        this.logs.push(line);
+        if (this.logs.length > this.max) this.logs.shift();
+        console.log(line);
+      }
+      info(m, d) { this.log('INFO', m, d); }
+      action(m, d) { this.log('ACTION', m, d); }
+      warn(m, d) { this.log('WARN', m, d); }
+      error(m, d) { this.log('ERROR', m, d); }
+      getText() { return this.logs.join('\n'); }
+    }
+
+    class FrameCaptureBuffer {
+      constructor(maxFrames = 15) {
+        this.maxFrames = maxFrames;
+        this.frames = [];
+        this.lastTime = 0;
+        this.offCanvas = document.createElement('canvas');
+        this.offCanvas.width = 160;
+        this.offCanvas.height = 108;
+        this.offCtx = this.offCanvas.getContext('2d');
+      }
+      tick(videoEl) {
+        const now = performance.now();
+        if (now - this.lastTime < 1000) return;
+        this.lastTime = now;
+        if (!videoEl || videoEl.readyState < 2) return;
+        try {
+          this.offCtx.drawImage(videoEl, 0, 0, 160, 108);
+          this.frames.push({
+            time: new Date().toLocaleTimeString(),
+            url: this.offCanvas.toDataURL('image/jpeg', 0.5)
+          });
+          if (this.frames.length > this.maxFrames) this.frames.shift();
+        } catch (e) {}
+      }
+    }
+
+    class CompassStabilizer {
+      constructor(thresholdDeg = 10.0, windowSec = 3.0) {
+        this.thresholdRad = (thresholdDeg * Math.PI) / 180;
+        this.windowMs = windowSec * 1000;
+        this.samples = [];
+      }
+      addMagSample(rad) {
+        const now = performance.now();
+        this.samples.push({ time: now, x: Math.cos(rad), y: Math.sin(rad) });
+        this.samples = this.samples.filter(s => now - s.time <= this.windowMs);
+      }
+      applyGuard(gyroRad, logger) {
+        if (this.samples.length === 0) return gyroRad;
+        let sx = 0, sy = 0;
+        for (const s of this.samples) { sx += s.x; sy += s.y; }
+        const avgMag = Math.atan2(sy, sx);
+        const diff = Math.atan2(Math.sin(avgMag - gyroRad), Math.cos(avgMag - gyroRad));
+        if (Math.abs(diff) > this.thresholdRad) {
+          logger.info('Kompasa korekcija (>10°)', { diffDeg: +(diff * 180 / Math.PI).toFixed(1) });
+          return gyroRad + diff * 0.15;
+        }
+        return gyroRad;
+      }
+    }
+
+    class GeometryEngine {
+      constructor(logger) {
+        this.logger = logger;
+        this.rawCorners = [];
+        this.walls = [];
+      }
+
+      projectCeilingCorner(ceilingMm, camMm, pitchRad, yawRad) {
+        const deltaY = ceilingMm - camMm;
+        if (deltaY <= 150) {
+          this.logger.error('Kamera pārāk tuvu griestiem', { deltaY });
+          return null;
+        }
+        const safePitch = Math.max(0.12, Math.min(1.35, Math.abs(pitchRad)));
+        const distHoriz = deltaY / Math.tan(safePitch);
+        const x = Math.round(distHoriz * Math.sin(yawRad));
+        const z = Math.round(distHoriz * Math.cos(yawRad));
+
+        const pt = { x, z, dist: Math.round(distHoriz) };
+        this.rawCorners.push(pt);
+        this.logger.action(`Fiksēts griestu stūris #${this.rawCorners.length}`, pt);
+        return pt;
+      }
+
+      buildOrthogonalRoom() {
+        if (this.rawCorners.length < 3) {
+          this.logger.warn('Mazāk par 3 stūriem — izveidojam sākuma taisnstūra kontūru');
+          this.rawCorners = [
+            { x: -2000, z: -1500 },
+            { x: 2000, z: -1500 },
+            { x: 2000, z: 1500 },
+            { x: -2000, z: 1500 }
+          ];
+        }
+
+        const pts = this.rawCorners.map(p => ({ x: p.x, z: p.z }));
+        const n = pts.length;
+        const ortho = [ { x: pts[0].x, z: pts[0].z } ];
+
+        for (let i = 1; i < n; i++) {
+          const prev = ortho[i - 1];
+          const curr = pts[i];
+          const dx = curr.x - prev.x;
+          const dz = curr.z - prev.z;
+          if (Math.abs(dx) >= Math.abs(dz)) {
+            ortho.push({ x: prev.x + (dx || 1500), z: prev.z });
+          } else {
+            ortho.push({ x: prev.x, z: prev.z + (dz || 1500) });
+          }
+        }
+
+        if (n >= 4) {
+          const first = ortho[0];
+          const last = ortho[n - 1];
+          const prev = ortho[n - 2];
+          if (prev.x === last.x) {
+            last.z = first.z;
+          } else {
+            last.x = first.x;
+          }
+        }
+
+        this.rebuildWallsFromPoints(ortho);
+        this.logger.action('Izveidota 90° ortogonāla kontūra', { corners: ortho.length });
+      }
+
+      rebuildWallsFromPoints(pts) {
+        const oldOpenings = this.walls.map(w => w.openings || []);
+        this.walls = [];
+        const n = pts.length;
+        for (let i = 0; i < n; i++) {
+          const p1 = pts[i];
+          const p2 = pts[(i + 1) % n];
+          this.walls.push({
+            index: i,
+            x1: p1.x, z1: p1.z,
+            x2: p2.x, z2: p2.z,
+            openings: oldOpenings[i] || []
+          });
+        }
+      }
+
+      getWallLength(w) {
+        return Math.round(Math.hypot(w.x2 - w.x1, w.z2 - w.z1));
+      }
+
+      scaleByWallMeasurement(wallIdx, targetLengthMm) {
+        const w = this.walls[wallIdx];
+        if (!w || targetLengthMm <= 100) return;
+        const currentLen = this.getWallLength(w);
+        if (currentLen < 10) return;
+
+        const scale = targetLengthMm / currentLen;
+        this.logger.action(`Mērogojam telpu pēc sienas #${wallIdx + 1}: ${currentLen}mm -> ${targetLengthMm}mm`, { scale: +scale.toFixed(4) });
+
+        const pts = this.walls.map(wall => ({
+          x: Math.round(wall.x1 * scale),
+          z: Math.round(wall.z1 * scale)
+        }));
+        this.rebuildWallsFromPoints(pts);
+      }
+
+      computeAreaM2() {
+        if (this.walls.length < 3) return 0;
+        let area = 0;
+        for (const w of this.walls) {
+          area += (w.x1 * w.z2 - w.x2 * w.z1);
+        }
+        return Math.abs(area) / 2 / 1e6;
+      }
+    }
+
+    const App = (function () {
+      const logger = new MasterLogger();
+      const frameBuffer = new FrameCaptureBuffer();
+      const compass = new CompassStabilizer(10.0, 3.0);
+      const geo = new GeometryEngine(logger);
+
+      let ceilingMm = 2500;
+      const cameraMm = 1600;
+      let orientWindow = [];
+      let heartbeatTick = 0;
+
+      let canvas, ctx;
+      let panX = 0, panY = 0, zoom = 0.07;
+      let selectedWallIdx = -1;
+      let isDragging = false, dragStartX = 0, dragStartY = 0;
+
+      function init() {
+        logger.info('Meistara Skaneris 2.1 startēts');
+        canvas = document.getElementById('plan-canvas');
+        ctx = canvas.getContext('2d');
+
+        setupSensors();
+        setupCamera();
+        setupCanvasInteractions();
+        startMainLoop();
+
+        window.addEventListener('keydown', (e) => {
+          if (e.code === 'Space' || e.key === 'VolumeDown' || e.key === 'VolumeUp') {
+            window.triggerCornerCapture();
+          }
+        });
+      }
+
+      function setupSensors() {
+        window.addEventListener('deviceorientation', (ev) => {
+          const now = performance.now();
+          const betaRad = ((ev.beta || 45) * Math.PI) / 180;
+          let alphaRad = ((ev.alpha || 0) * Math.PI) / 180;
+
+          if (ev.webkitCompassHeading !== undefined) {
+            compass.addMagSample((ev.webkitCompassHeading * Math.PI) / 180);
+          } else if (ev.alpha !== null) {
+            compass.addMagSample(alphaRad);
+          }
+
+          alphaRad = compass.applyGuard(alphaRad, logger);
+          const pitchFromHoriz = Math.abs(betaRad - Math.PI / 2);
+
+          orientWindow.push({ time: now, pitch: pitchFromHoriz || 0.45, yaw: alphaRad });
+          orientWindow = orientWindow.filter(s => now - s.time <= 3000);
+        }, true);
+      }
+
+      async function setupCamera() {
+        const video = document.getElementById('camera-stream');
+        const statusText = document.getElementById('scanner-status-text');
+        
+        try {
+          // Pārbaudām, vai pārlūks atbalsta multivides straumēšanu
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Pārlūks neatbalsta kameras piekļuvi (getUserMedia nav atrasts)');
+          }
+
+          statusText.textContent = 'Pieprasa kameras atļauju...';
+
+          const constraints = {
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          };
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          
+          await video.play().catch(e => {
+            logger.warn('Video auto-play atteicās, mēģinām atkārtoti: ' + e.message);
+            return video.play();
+          });
+
+          statusText.textContent = 'Notēmē uz griestu stūri un spied pogu';
+          logger.info('Kameras plūsma sekmīgi palaista');
+        } catch (err) {
+          logger.error('Kameras kļūda: ' + err.message);
+          statusText.textContent = 'Kļūda: Nav kameras atļaujas vai tā aizņemta!';
+          alert('Kameras kļūda: ' + err.message + '\nPārliecinies, ka Chrome pārlūkam ir dota atļauja izmantot kameru!');
+        }
+      }
+
+      function get3SecAveragedAngles() {
+        if (orientWindow.length === 0) {
+          const simYaw = (geo.rawCorners.length * Math.PI) / 2;
+          return { pitch: 0.45, yaw: simYaw };
+        }
+        let sp = 0, sx = 0, sy = 0;
+        for (const s of orientWindow) {
+          sp += s.pitch;
+          sx += Math.cos(s.yaw);
+          sy += Math.sin(s.yaw);
+        }
+        return {
+          pitch: sp / orientWindow.length,
+          yaw: Math.atan2(sy, sx)
+        };
+      }
+
+      function triggerCorner() {
+        const flash = document.getElementById('capture-flash');
+        flash.style.opacity = '0.75';
+        setTimeout(() => (flash.style.opacity = '0'), 80);
+        if (navigator.vibrate) navigator.vibrate(45);
+
+        const avg = get3SecAveragedAngles();
+        const pt = geo.projectCeilingCorner(ceilingMm, cameraMm, avg.pitch, avg.yaw);
+
+        if (pt) {
+          document.getElementById('corner-badge-count').textContent = `${geo.rawCorners.length} stūri`;
+          document.getElementById('scanner-status-text').textContent =
+            `Fiksēts stūris #${geo.rawCorners.length} (${pt.x}, ${pt.z} mm). Pagriezies uz nākamo!`;
+        }
+      }
+
+      function startMainLoop() {
+        const video = document.getElementById('camera-stream');
+        function loop() {
+          frameBuffer.tick(video);
+          heartbeatTick++;
+          if (heartbeatTick % 30 === 0) {
+            document.getElementById('heartbeat-cam').classList.toggle('pulse-on');
+            document.getElementById('heartbeat-2d').classList.toggle('pulse-on');
+          }
+          requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+      }
+
+      function finishCaptureAndOpen2D() {
+        geo.buildOrthogonalRoom();
+        document.getElementById('view-camera').classList.remove('active');
+        document.getElementById('view-blueprint').classList.add('active');
+        resizeCanvas();
+        resetView2D();
+      }
+
+      function switchToCamera() {
+        document.getElementById('view-blueprint').classList.remove('active');
+        document.getElementById('view-camera').classList.add('active');
+      }
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        draw2D();
+      }
+      window.addEventListener('resize', resizeCanvas);
+
+      function resetView2D() {
+        if (geo.walls.length === 0) return;
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+        for (const w of geo.walls) {
+          minX = Math.min(minX, w.x1, w.x2);
+          maxX = Math.max(maxX, w.x1, w.x2);
+          minZ = Math.min(minZ, w.z1, w.z2);
+          maxZ = Math.max(maxZ, w.z1, w.z2);
+        }
+        const roomW = Math.max(1000, maxX - minX);
+        const roomH = Math.max(1000, maxZ - minZ);
+        zoom = Math.min((canvas.width * 0.65) / roomW, (canvas.height * 0.55) / roomH);
+        panX = canvas.width / 2 - ((minX + maxX) / 2) * zoom;
+        panY = canvas.height / 2 - ((minZ + maxZ) / 2) * zoom;
+        draw2D();
+      }
+
+      function worldToScreen(x, z) {
+        return { x: panX + x * zoom, y: panY + z * zoom };
+      }
+
+      function draw2D() {
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.lineWidth = 1;
+        const step = 40;
+        for (let x = (panX % step); x < canvas.width; x += step) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = (panY % step); y < canvas.height; y += step) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+
+        if (geo.walls.length === 0) return;
+
+        ctx.beginPath();
+        geo.walls.forEach((w, idx) => {
+          const p = worldToScreen(w.x1, w.z1);
+          if (idx === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(64, 201, 119, 0.08)';
+        ctx.fill();
+
+        geo.walls.forEach((w, idx) => {
+          const p1 = worldToScreen(w.x1, w.z1);
+          const p2 = worldToScreen(w.x2, w.z2);
+          const isSelected = idx === selectedWallIdx;
+
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.strokeStyle = isSelected ? '#40c977' : '#ffffff';
+          ctx.lineWidth = isSelected ? 6 : 4;
+          ctx.stroke();
+
+          if (w.openings) {
+            w.openings.forEach(op => {
+              const mx = (p1.x + p2.x) / 2;
+              const my = (p1.y + p2.y) / 2;
+              ctx.fillStyle = op.type === 'DOOR' ? '#f59e0b' : '#38bdf8';
+              ctx.beginPath();
+              ctx.arc(mx, my, 7, 0, Math.PI * 2);
+              ctx.fill();
+            });
+          }
+
+          ctx.fillStyle = '#40c977';
+          ctx.beginPath();
+          ctx.arc(p1.x, p1.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          const lenMm = geo.getWallLength(w);
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          ctx.fillStyle = isSelected ? '#40c977' : '#d1dbd5';
+          ctx.font = 'bold 13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${lenMm} mm`, midX, midY - 10);
+        });
+
+        document.getElementById('room-area-display').textContent = `${geo.computeAreaM2().toFixed(2)} m²`;
+      }
+
+      function setupCanvasInteractions() {
+        canvas.addEventListener('pointerdown', (e) => {
+          const rect = canvas.getBoundingClientRect();
+          const sx = e.clientX - rect.left;
+          const sy = e.clientY - rect.top;
+
+          let hitIdx = -1;
+          let minDist = 28;
+          geo.walls.forEach((w, idx) => {
+            const p1 = worldToScreen(w.x1, w.z1);
+            const p2 = worldToScreen(w.x2, w.z2);
+            const d = distToSegment({ x: sx, y: sy }, p1, p2);
+            if (d < minDist) { minDist = d; hitIdx = idx; }
+          });
+
+          if (hitIdx !== -1) {
+            selectedWallIdx = hitIdx;
+            const w = geo.walls[hitIdx];
+            document.getElementById('editor-wall-title').textContent = `Siena #${hitIdx + 1} (aktuālais: ${geo.getWallLength(w)} mm)`;
+            document.getElementById('input-wall-mm').value = geo.getWallLength(w);
+            document.getElementById('wall-editor').classList.add('open');
+            draw2D();
+            return;
+          }
+
+          isDragging = true;
+          dragStartX = e.clientX - panX;
+          dragStartY = e.clientY - panY;
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+          if (!isDragging) return;
+          panX = e.clientX - dragStartX;
+          panY = e.clientY - dragStartY;
+          draw2D();
+        });
+
+        window.addEventListener('pointerup', () => { isDragging = false; });
+      }
+
+      function distToSegment(p, v, w) {
+        const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+        if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+        let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+      }
+
+      function applyWallLength() {
+        if (selectedWallIdx < 0) return;
+        const val = parseInt(document.getElementById('input-wall-mm').value, 10);
+        if (val > 100) {
+          geo.scaleByWallMeasurement(selectedWallIdx, val);
+          closeWallEditor();
+          resetView2D();
+        }
+      }
+
+      function addOpeningToSelected(type) {
+        if (selectedWallIdx < 0) return;
+        const w = geo.walls[selectedWallIdx];
+        w.openings.push({ type, width: type === 'DOOR' ? 900 : 1200 });
+        logger.action(`Pievienota aile (${type}) sienai #${selectedWallIdx + 1}`);
+        draw2D();
+      }
+
+      function closeWallEditor() {
+        selectedWallIdx = -1;
+        document.getElementById('wall-editor').classList.remove('open');
+        draw2D();
+      }
+
+      function exportDXF() {
+        if (geo.walls.length === 0) return;
+        let dxf = "0\nSECTION\n2\nENTITIES\n";
+        for (const w of geo.walls) {
+          dxf += `0\nLINE\n8\nSIENAS\n10\n${w.x1}\n20\n${w.z1}\n30\n0.0\n11\n${w.x2}\n21\n${w.z2}\n31\n0.0\n`;
+          const mx = (w.x1 + w.x2) / 2;
+          const mz = (w.z1 + w.z2) / 2;
+          const len = geo.getWallLength(w);
+          dxf += `0\nTEXT\n8\nIZMERI\n10\n${mx}\n20\n${mz}\n30\n0.0\n40\n120\n1\n${len} mm\n`;
+        }
+        dxf += "0\nENDSEC\n0\nEOF\n";
+
+        const blob = new Blob([dxf], { type: 'application/dxf'}}, { type: 'application/dxf' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `telpa_${Date.now()}.dxf`;
+        a.click();
+        logger.action('DXF rasējums veiksmīgi eksportēts');
+      }
+
+      function openLogModal() {
+        const strip = document.getElementById('thumb-strip');
+        strip.innerHTML = '';
+        frameBuffer.frames.forEach(f => {
+          const div = document.createElement('div');
+          div.className = 'thumb-item';
+          div.innerHTML = `<img src="${f.url}"><span>${f.time}</span>`;
+          strip.appendChild(div);
+        });
+        document.getElementById('log-output').textContent = logger.getText();
+        document.getElementById('modal-log').classList.add('open');
+      }
+
+      function closeLogModal() {
+        document.getElementById('modal-log').classList.remove('open');
+      }
+
+      function copyLogs() {
+        navigator.clipboard.writeText(logger.getText());
+        alert('Žurnāls nokopēts starpliktuvē!');
+      }
+
+      function updateCeilingHeight(val) {
+        ceilingMm = parseInt(val, 10) || 2500;
+        logger.info('Mainīts griestu augstums uz ' + ceilingMm + ' mm');
+      }
+
+      window.triggerCornerCapture = triggerCorner;
+      window.addEventListener('DOMContentLoaded', init);
+
+      return {
+        finishCaptureAndOpen2D,
+        switchToCamera,
+        resetView2D,
+        applyWallLength,
+        addOpeningToSelected,
+        closeWallEditor,
+        exportDXF,
+        openLogModal,
+        closeLogModal,
+        copyLogs,
+        updateCeilingHeight
+      };
+    })();
+  </script>
+</body>
+</html>
