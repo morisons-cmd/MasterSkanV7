@@ -756,7 +756,7 @@
         }
         dxf += "0\nENDSEC\n0\nEOF\n";
 
-        const blob = new Blob([dxf], { type: 'application/dxf'}}, { type: 'application/dxf' });
+        const blob = new Blob([dxf], { type: 'application/dxf' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `telpa_${Date.now()}.dxf`;
